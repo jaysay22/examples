@@ -1,62 +1,47 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-/// @title Operator-Latency-Impact Trap
-/// @notice A test Drosera trap that tracks operator response latency
-///         and escalates if response delays exceed thresholds.
-/// @dev Uses test values for demonstration only.
+/// @title Operator-Latency-Impact Trap (Drosera-compatible)
+/// @notice Detects excessive operator response latency and emits severity payload.
+/// @dev Uses mock test values and encodes results as bytes for Drosera runner.
 contract OperatorLatencyImpactTrap {
-    // Configurable threshold (in seconds)
-    uint256 public latencyThreshold;
+    uint256 constant LATENCY_THRESHOLD = 60; // 60 seconds test value
 
-    // Store last trap emission timestamp
-    uint256 public lastTrapTimestamp;
-
-    // Store last operator response timestamp
-    uint256 public lastResponseTimestamp;
-
-    // Safety fallback flag
-    bool public safeModeActive;
-
-    // Event emitted when latency exceeds threshold
-    event LatencyExceeded(uint256 latency, uint256 threshold);
-
-    // Event emitted when safe mode is enabled
-    event SafeModeEnabled();
-
-    constructor(uint256 _latencyThreshold) {
-        latencyThreshold = _latencyThreshold;
-        safeModeActive = false;
+    /// @notice Called each run to gather data
+    /// @dev Should be 'view' and return ABI-encoded bytes.
+    function collect() external view returns (bytes memory) {
+        // Encode simulated latency reading
+        uint256 mockLatency = block.timestamp % 120; // fake test data
+        return abi.encode(mockLatency);
     }
 
-    /// @notice Called to simulate trap "collect" step
-    /// @dev Marks a new trap emission (like Drosera’s oracle check)
-    function collect() external {
-        lastTrapTimestamp = block.timestamp;
-    }
+    /// @notice Decides whether to respond
+    /// @dev Must be pure and take array of encoded collect() results.
+    /// @param history Array of collected samples (latest last)
+    /// @return triggered True if latency exceeds threshold
+    /// @return payload Encoded bytes (reason + severity)
+    function shouldRespond(bytes[] calldata history)
+        external
+        pure
+        returns (bool triggered, bytes memory payload)
+    {
+        if (history.length == 0) return (false, "");
 
-    /// @notice Checks if operator should respond
-    /// @return true if latency exceeds threshold
-    function shouldRespond() external view returns (bool) {
-        if (lastTrapTimestamp == 0) return false;
-        uint256 latency = block.timestamp - lastTrapTimestamp;
-        return latency > latencyThreshold;
-    }
+        // Decode the latest latency reading
+        uint256 latestLatency = abi.decode(history[history.length - 1], (uint256));
 
-    /// @notice Operator calls this when responding to trap
-    function operatorRespond() external {
-        lastResponseTimestamp = block.timestamp;
-
-        uint256 latency = lastResponseTimestamp - lastTrapTimestamp;
-        if (latency > latencyThreshold) {
-            emit LatencyExceeded(latency, latencyThreshold);
-            _enableSafeMode();
+        // Trigger if latency exceeds threshold
+        if (latestLatency > LATENCY_THRESHOLD) {
+            // Severity = 1 (latency breach)
+            payload = abi.encode(
+                "LATENCY_THRESHOLD_EXCEEDED",
+                latestLatency,
+                LATENCY_THRESHOLD,
+                uint8(1)
+            );
+            return (true, payload);
         }
-    }
 
-    /// @dev Internal safe-mode trigger
-    function _enableSafeMode() internal {
-        safeModeActive = true;
-        emit SafeModeEnabled();
+        return (false, "");
     }
 }
